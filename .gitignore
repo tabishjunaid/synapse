@@ -1,0 +1,66 @@
+# Root .gitignore for the Synapse monorepo (backend / frontend / gateway-rs).
+# Per-package .gitignore files still apply within their dirs; these patterns are
+# unanchored so they also catch artifacts in any new subdirectory.
+
+# ---- OS / editor junk ----
+.DS_Store
+.AppleDouble
+Thumbs.db
+*~
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# ---- Secrets / local env ----
+# Keep committed examples (*.env.example) but never real env files.
+.env
+.env.*
+!.env.example
+!*.env.example
+
+# ---- Logs ----
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# ---- Node / frontend (Next.js, pnpm) ----
+node_modules/
+.pnpm-store/
+.pnp
+.pnp.*
+.next/
+out/
+build/
+coverage/
+*.tsbuildinfo
+.vercel
+
+# ---- Python / backend (uv, pytest) ----
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+dist/
+*.egg-info/
+
+# ---- Rust / gateway-rs ----
+target/
+
+# ---- graphify knowledge graph: keep the graph, drop the build cache ----
+graphify-out/cache/
+
+# ---- Claude Code: shared config is committed; local/runtime state is not ----
+.claude/settings.local.json
+.claude/monitor/
+.claude/*.lock
+
+# ---- Test / tooling output ----
+.playwright-mcp/
+test-results/
+playwright-report/

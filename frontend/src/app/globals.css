@@ -1,0 +1,184 @@
+@import "tailwindcss";
+
+/* Design tokens as CSS variables — the theming unit (concept doc §5b). Semantic
+   tokens flip with the colour scheme automatically, so components use
+   `bg-card` / `text-muted` etc. without per-element dark: variants. A pack
+   persona can later override --accent on a [data-persona] scope. */
+:root {
+  /* Let the UA theme native controls (selects, scrollbars, form chrome) to match
+     the active token scheme instead of always rendering light. */
+  color-scheme: light dark;
+  --background: #fafaf9;
+  --foreground: #1c1917;
+  --surface: #f5f5f4;
+  --card: #ffffff;
+  --card-foreground: #1c1917;
+  --border: #e7e5e4;
+  --muted: #f5f5f4;
+  --muted-foreground: #78716c;
+  --accent: #4f46e5;
+  --accent-foreground: #ffffff;
+  --success: #15803d;
+  --warning: #b45309;
+  --danger: #dc2626;
+  --radius: 0.75rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+    --surface: #161615;
+    --card: #1c1c1b;
+    --card-foreground: #ededed;
+    --border: #2a2a28;
+    --muted: #222220;
+    --muted-foreground: #a8a29e;
+    --accent: #6366f1;
+    --accent-foreground: #ffffff;
+    --success: #4ade80;
+    --warning: #fbbf24;
+    --danger: #f87171;
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-border: var(--border);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --radius-card: var(--radius);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+/* ============================================================================
+   Classroom — the lecture-hall "stage". Always dark (a focused room), themed
+   per knowledge-pack persona via CSS variables set inline on `.stage`. The pack
+   persona is the theming unit (concept doc §"Design-token layer"): swapping pack
+   re-skins accent / display font / density without touching component code.
+   ========================================================================== */
+.stage {
+  /* The lecture hall is always a focused, dark room. */
+  color-scheme: dark;
+  /* Persona tokens — overridden inline per pack; this is the neutral default. */
+  --accent: #6aa9ff;
+  --accent-2: #9b8cff;
+  --glow: 106, 169, 255;        /* rgb triplet (comma form, for rgba() glows) */
+  --font-display: var(--font-geist-sans), system-ui, sans-serif;
+  --pad: 1.5rem;                /* density */
+
+  --ink: #f4f6fb;
+  --ink-soft: #aeb6c6;
+  --ink-faint: #6b7488;
+  --panel: 255, 255, 255;       /* glass tint */
+  --line: 255, 255, 255;
+
+  color: var(--ink);
+  font-family: var(--font-display);
+  background:
+    radial-gradient(1200px 800px at 50% -10%, rgba(var(--glow), 0.16), transparent 60%),
+    radial-gradient(900px 600px at 85% 110%, rgba(var(--glow), 0.10), transparent 55%),
+    linear-gradient(180deg, #0a0d14 0%, #070910 60%, #05060b 100%);
+}
+
+/* Frosted glass — the recurring surface for whiteboard, rails, cards. */
+.glass {
+  background: linear-gradient(180deg, rgba(var(--panel), 0.06), rgba(var(--panel), 0.025));
+  border: 1px solid rgba(var(--line), 0.10);
+  box-shadow:
+    0 1px 0 0 rgba(var(--line), 0.06) inset,
+    0 24px 60px -28px rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(18px) saturate(120%);
+  -webkit-backdrop-filter: blur(18px) saturate(120%);
+}
+
+.accent-text { color: var(--accent); }
+.hairline { border-color: rgba(var(--line), 0.10); }
+
+/* Visible focus ring for the keyboard-reachable constellation stars (SVG <g>). */
+.stage svg g[role="button"]:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+.scroll-soft { scrollbar-width: thin; scrollbar-color: rgba(var(--line), 0.18) transparent; }
+.scroll-soft::-webkit-scrollbar { width: 6px; height: 6px; }
+.scroll-soft::-webkit-scrollbar-thumb { background: rgba(var(--line), 0.16); border-radius: 999px; }
+
+/* ---- Presence orb -------------------------------------------------------- */
+@keyframes breathe {
+  0%, 100% { transform: scale(1); opacity: 0.9; }
+  50%      { transform: scale(1.05); opacity: 1; }
+}
+@keyframes think-swirl { to { transform: rotate(360deg); } }
+@keyframes halo-pulse {
+  0%, 100% { transform: scale(1); opacity: 0.55; }
+  50%      { transform: scale(1.18); opacity: 0.15; }
+}
+
+/* ---- Constellation ------------------------------------------------------- */
+@keyframes twinkle {
+  0%, 100% { opacity: 0.9; }
+  50%      { opacity: 0.45; }
+}
+@keyframes pulse-ring {
+  0%   { transform: scale(0.8); opacity: 0.8; }
+  100% { transform: scale(2.3); opacity: 0; }
+}
+
+/* ---- Whiteboard self-drawing & general entrances ------------------------- */
+@keyframes draw-stroke { to { stroke-dashoffset: 0; } }
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes caption-in {
+  from { opacity: 0; transform: translateY(10px); filter: blur(6px); }
+  to   { opacity: 1; transform: translateY(0); filter: blur(0); }
+}
+@keyframes rise-in {
+  from { opacity: 0; transform: translateY(16px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes engagement-aura {
+  0%, 100% { opacity: 0.35; }
+  50%      { opacity: 0.7; }
+}
+@keyframes blink-caret { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+
+.animate-caption-in { animation: caption-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.animate-rise-in    { animation: rise-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.animate-fade-up    { animation: fade-up 0.6s ease both; }
+
+.thinking-dots > span { animation: breathe 1.2s ease-in-out infinite; display: inline-block; }
+.thinking-dots > span:nth-child(2) { animation-delay: 0.15s; }
+.thinking-dots > span:nth-child(3) { animation-delay: 0.3s; }
+
+/* Respect reduced-motion app-wide, not just inside the classroom: neutralize CSS
+   keyframe animations and transitions everywhere. JS rAF loops (e.g. the presence
+   orb) additionally gate on the matchMedia query via usePrefersReducedMotion. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

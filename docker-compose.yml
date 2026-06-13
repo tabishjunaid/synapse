@@ -1,0 +1,83 @@
+# Synapse — full local deployable bundle: Ollama brain + FastAPI backend + Next.js frontend.
+#
+#   docker compose up --build
+#
+# Then open http://localhost:3000/spike . First model pull (~2 GB) runs once into the
+# `ollama-models` volume; the first teacher turn pays a cold start while weights load.
+
+services:
+  # The local brain: an OpenAI-compatible server hosting llama3.2:3b + embeddings.
+  ollama:
+    image: ollama/ollama:latest
+    volumes:
+      - ollama-models:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  # One-shot: pull the chat + embedding models into the shared volume, then exit.
+  ollama-pull:
+    image: ollama/ollama:latest
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["sh", "-c", "ollama pull llama3.2:3b && ollama pull nomic-embed-text"]
+    restart: "no"
+
+  # Document store: course tree, learner model, sessions, RAG chunks.
+  # No host port published — avoids colliding with any Mongo already on 27017.
+  mongo:
+    image: mongo:8
+    volumes:
+      - mongo-data:/data/db
+    restart: unless-stopped
+
+  # Time-series telemetry: latency, interaction signals, mastery-over-time, eval.
+  questdb:
+    image: questdb/questdb:8.1.1
+    volumes:
+      - questdb-data:/var/lib/questdb
+    restart: unless-stopped
+
+  # Teaching service. SYNAPSE_BRAIN=local points the OpenAI-compatible client at Ollama.
+  backend:
+    build: ./backend
+    environment:
+      SYNAPSE_BRAIN: local
+      SYNAPSE_LOCAL_BASE_URL: http://ollama:11434/v1
+      SYNAPSE_LOCAL_MODEL: llama3.2:3b
+      SYNAPSE_EMBED_BASE_URL: http://ollama:11434/v1
+      SYNAPSE_MONGO_URL: mongodb://mongo:27017
+      SYNAPSE_QUESTDB_HOST: questdb
+      SYNAPSE_HOST: 0.0.0.0
+      SYNAPSE_PORT: "8765"
+      SYNAPSE_FRONTEND_ORIGIN: http://localhost:3000
+    ports:
+      - "8765:8765"
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Next.js spike UI. The browser connects to the backend WS on the host port.
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_SYNAPSE_WS: ws://localhost:8765/ws/session
+    ports:
+      # Host 3001 to avoid colliding with a local `pnpm dev` on 3000; container stays 3000.
+      - "3001:3000"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  ollama-models:
+  mongo-data:
+  questdb-data:

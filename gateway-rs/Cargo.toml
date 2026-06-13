@@ -1,0 +1,27 @@
+[package]
+name = "synapse-gateway"
+version = "0.1.0"
+edition = "2021"
+description = "Synapse audio gateway — Phase 1 Rust (Axum + tokio) replacement for the Phase 0 Python relay."
+license = "MIT"
+
+[[bin]]
+name = "synapse-gateway"
+path = "src/main.rs"
+
+[dependencies]
+# WS termination + HTTP (healthz). axum 0.7 brings hyper 1 + tokio.
+axum = { version = "0.7", features = ["ws"] }
+tokio = { version = "1", features = ["full"] }
+# Upstream client to the Python brain WS. 0.21 keeps Message::Text(String).
+tokio-tungstenite = "0.21"
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+anyhow = "1"
+
+[profile.release]
+lto = true
+codegen-units = 1
