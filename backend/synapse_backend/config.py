@@ -28,8 +28,10 @@ class Settings(BaseSettings):
     # the base URL, model, key, and a couple of per-provider quirks differ.
     brain: Brain = "local"
 
-    # Shared: cap on the fast-path reply so latency stays bounded.
-    fast_max_tokens: int = 300
+    # Cap on the fast-path reply. Deliberately small so the teacher speaks ONE
+    # short spoken turn (a couple of sentences + a question) instead of dumping a
+    # written lecture — a live classroom is a back-and-forth, not an essay.
+    fast_max_tokens: int = 140
 
     # Read timeout (seconds) for OpenAI-compatible model calls. The default is
     # generous because structured generations (course planning, the between-turns

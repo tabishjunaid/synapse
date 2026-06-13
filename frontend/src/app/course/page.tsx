@@ -99,9 +99,14 @@ export default function CoursePage() {
           </span>
         </div>
         {course.next_lesson_id && (
-          <Link href={`/lesson/${course.next_lesson_id}`} className="self-start">
-            <Button size="lg">Continue →</Button>
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link href="/classroom" className="self-start">
+              <Button size="lg">Enter the classroom →</Button>
+            </Link>
+            <Link href={`/lesson/${course.next_lesson_id}`} className="self-start">
+              <Button variant="secondary" size="lg">Text mode</Button>
+            </Link>
+          </div>
         )}
       </header>
 

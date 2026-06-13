@@ -22,9 +22,11 @@ import { SkillConstellation } from "@/components/classroom/SkillConstellation";
 import { VideoTile } from "@/components/classroom/VideoTile";
 import { Whiteboard } from "@/components/classroom/Whiteboard";
 import { WritingCanvas } from "@/components/classroom/WritingCanvas";
+import { completeLesson } from "@/lib/api";
 import { THINKING_PHRASES } from "@/lib/classroomMock";
 import { useClassroomData } from "@/lib/classroomSource";
 import { personaVars, type Persona } from "@/lib/personas";
+import type { CompletionResult } from "@/lib/types";
 import { useCourse } from "@/lib/useCourse";
 import { useDismissable } from "@/lib/useDismissable";
 import { useSpikeSession } from "@/lib/useSpikeSession";
@@ -38,6 +40,9 @@ export default function ClassroomPage() {
   const data = useClassroomData(lessonId);
 
   const [selectedPackId, setSelectedPackId] = useState<string | null>(null);
+  const [started, setStarted] = useState(false);
+  const [grading, setGrading] = useState(false);
+  const [result, setResult] = useState<CompletionResult | null>(null);
   const [revealKey, setRevealKey] = useState(0);
   const [typed, setTyped] = useState("");
   const [writing, setWriting] = useState(false);
@@ -164,6 +169,31 @@ export default function ClassroomPage() {
     start();
   };
 
+  // The click is the user gesture that unblocks the browser's speech synthesis,
+  // so the professor can start talking immediately.
+  const beginLesson = () => {
+    setStarted(true);
+    send("I'm ready — please begin the lesson.");
+  };
+
+  const checkUnderstanding = async () => {
+    if (!lessonId) return;
+    setGrading(true);
+    const transcript = state.turns
+      .flatMap((t) => [
+        { role: "user", content: t.learnerText },
+        { role: "assistant", content: t.teacherText },
+      ])
+      .filter((m) => m.content.trim());
+    try {
+      setResult(await completeLesson(lessonId, transcript));
+    } catch {
+      /* grading is best-effort in the classroom; keep teaching on failure */
+    } finally {
+      setGrading(false);
+    }
+  };
+
   const switchPersona = (p: Persona) => {
     setSelectedPackId(p.id);
     setRevealKey((k) => k + 1);
@@ -201,6 +231,16 @@ export default function ClassroomPage() {
           />
         </div>
         <div className="flex items-center gap-2">
+          {lessonId && started && (
+            <button
+              onClick={checkUnderstanding}
+              disabled={grading || state.turns.length < 2}
+              className="rounded-full px-3 py-1.5 text-xs font-semibold text-black transition hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ink)] disabled:opacity-40"
+              style={{ background: "var(--accent)" }}
+            >
+              {grading ? "Assessing…" : "Check understanding"}
+            </button>
+          )}
           <RungIndicator state={state} />
           <button
             onClick={() => setBoardOpen(true)}
@@ -247,6 +287,15 @@ export default function ClassroomPage() {
               turnKey={last?.id ?? `opening-${persona.id}`}
               renderTeacher={(t) => <DeepenText text={t} glossary={data.glossary} />}
             />
+            {lessonId && !started && state.turns.length === 0 && (
+              <button
+                onClick={beginLesson}
+                className="rounded-full px-5 py-2.5 text-sm font-semibold text-black shadow-lg transition hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ink)]"
+                style={{ background: "var(--accent)" }}
+              >
+                ▶ Begin the lesson
+              </button>
+            )}
           </div>
 
           {/* check-in floats above the dock */}
@@ -343,6 +392,35 @@ export default function ClassroomPage() {
             </div>
             {boardNode}
             <SkillConstellation nodes={constellation.skills} edges={constellation.edges} />
+          </div>
+        </div>
+      )}
+
+      {result && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4">
+          <div className="glass w-full max-w-md rounded-2xl p-5 text-[var(--ink)]">
+            <h2 className="text-lg font-semibold">
+              {result.passed ? "Lesson mastered ✓" : "Keep practising"}
+            </h2>
+            {result.gain != null && (
+              <p className="mt-1 text-xs text-[var(--ink-faint)]">
+                learning gain {result.gain >= 0 ? "+" : ""}
+                {Math.round(result.gain * 100)}%
+              </p>
+            )}
+            <div className="mt-3 space-y-1 text-sm text-[var(--ink-soft)]">
+              {result.recap.covered && <p><span className="text-[var(--ink-faint)]">Covered:</span> {result.recap.covered}</p>}
+              {result.recap.to_practise && <p><span className="text-[var(--ink-faint)]">To practise:</span> {result.recap.to_practise}</p>}
+              {result.recap.next_time && <p><span className="text-[var(--ink-faint)]">Next time:</span> {result.recap.next_time}</p>}
+            </div>
+            <div className="mt-4 flex gap-2">
+              <Link href="/course">
+                <Button>Back to course</Button>
+              </Link>
+              <Button variant="secondary" onClick={() => setResult(null)}>
+                Keep teaching
+              </Button>
+            </div>
           </div>
         </div>
       )}
