@@ -32,6 +32,10 @@ app = FastAPI(title="Synapse teaching service", version="0.2.0", lifespan=lifesp
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[get_settings().frontend_origin],
+    # Dev convenience: also accept any localhost / 127.0.0.1 port so the browser
+    # isn't CORS-blocked whether the UI is on :3000 (dev), :3001 (bundled
+    # frontend), or an ad-hoc dev-server port. Tighten for production.
+    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?",
     allow_methods=["*"],
     allow_headers=["*"],
 )
