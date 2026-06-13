@@ -9,9 +9,10 @@
 //! This is the arbiter's state machine; the wiring to an actual TTS stream and a
 //! brain-cancel signal lands as Phase 1 fills in the audio path.
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum TeacherState {
     /// No active teacher turn.
+    #[default]
     Idle,
     /// A turn is streaming out (`turn_start` seen, `turn_end` not yet).
     Speaking,
@@ -28,12 +29,6 @@ pub enum Decision {
 #[derive(Default)]
 pub struct BargeIn {
     state: TeacherState,
-}
-
-impl Default for TeacherState {
-    fn default() -> Self {
-        TeacherState::Idle
-    }
 }
 
 impl BargeIn {
