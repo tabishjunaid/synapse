@@ -64,3 +64,6 @@ graphify-out/cache/
 .playwright-mcp/
 test-results/
 playwright-report/
+
+# ---- Local machine-specific compose override (host Ollama, etc.) ----
+docker-compose.override.yml

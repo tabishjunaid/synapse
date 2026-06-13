@@ -9,6 +9,7 @@ behind the same protocol once Phase 0 has surfaced the real requirements
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -40,6 +41,14 @@ _client_event = TypeAdapter(ClientEvent)
 async def session_socket(ws: WebSocket) -> None:
     await ws.accept()
 
+    # Serialize every outbound frame: the between-turns coach runs as a background
+    # task and sends concurrently with the main turn loop, so sends must not interleave.
+    send_lock = asyncio.Lock()
+
+    async def send(payload: str) -> None:
+        async with send_lock:
+            await ws.send_text(payload)
+
     # A lesson_id turns the generic loop into a lesson-directed session: the
     # teacher gets a prompt built from the lesson's objectives + current mastery.
     lesson_id = ws.query_params.get("lesson_id")
@@ -47,13 +56,14 @@ async def session_socket(ws: WebSocket) -> None:
     db_session = None  # the persisted LessonSession (lesson mode only)
     transcript: list[dict] = []
     courses = None
+    coach_tasks: set[asyncio.Task] = set()
     if lesson_id:
         # Imported here so the /spike path never needs Mongo.
         from synapse_backend import courses
 
         runtime = await courses.lesson_runtime(lesson_id)
         if runtime is None:
-            await ws.send_text(ServerError(message="Lesson not found.").model_dump_json())
+            await send(ServerError(message="Lesson not found.").model_dump_json())
             await ws.close()
             return
         # Pass the lesson so the between-turns planner can run alongside the fast
@@ -64,6 +74,34 @@ async def session_socket(ws: WebSocket) -> None:
     else:
         session = TeacherSession()
 
+    def spawn_coach(turn_no: int) -> None:
+        """Run the between-turns planner in the background so it never blocks the
+        next turn (on a slow local model it can take many seconds). Best-effort:
+        a failure is logged and the lesson continues. Emits a learner_update when
+        it has something to report."""
+
+        async def _run() -> None:
+            try:
+                update = await session.run_between_turns()
+                if update is None:
+                    return
+                touched = await courses.record_live_update(runtime.course_id, update)
+                if touched or update.focus or update.ready_to_check:
+                    await send(
+                        LearnerUpdate(
+                            turn_id=turn_no,
+                            skills=[LearnerSkill(**t) for t in touched],
+                            focus=update.focus,
+                            ready_to_check=update.ready_to_check,
+                        ).model_dump_json()
+                    )
+            except Exception:
+                logger.warning("between-turns update failed", exc_info=True)
+
+        task = asyncio.create_task(_run())
+        coach_tasks.add(task)
+        task.add_done_callback(coach_tasks.discard)
+
     turn_id = 0
 
     try:
@@ -72,7 +110,7 @@ async def session_socket(ws: WebSocket) -> None:
             try:
                 event = _client_event.validate_json(raw)
             except ValidationError as exc:
-                await ws.send_text(ServerError(message=f"bad event: {exc}").model_dump_json())
+                await send(ServerError(message=f"bad event: {exc}").model_dump_json())
                 continue
 
             if isinstance(event, ResetEvent):
@@ -81,7 +119,7 @@ async def session_socket(ws: WebSocket) -> None:
 
             assert isinstance(event, TranscriptEvent)
             turn_id += 1
-            await ws.send_text(
+            await send(
                 TurnStart(turn_id=turn_id, speech_end_ts=event.speech_end_ts).model_dump_json()
             )
 
@@ -106,7 +144,7 @@ async def session_socket(ws: WebSocket) -> None:
                                 await db_session.save()
                             except Exception:
                                 logger.warning("failed to persist lesson turn", exc_info=True)
-                        await ws.send_text(
+                        await send(
                             TurnEnd(
                                 turn_id=turn_id,
                                 full_text=item.full_text,
@@ -120,39 +158,23 @@ async def session_socket(ws: WebSocket) -> None:
                             ).model_dump_json()
                         )
                     else:
-                        await ws.send_text(
-                            SpeakDelta(turn_id=turn_id, text=item).model_dump_json()
-                        )
+                        await send(SpeakDelta(turn_id=turn_id, text=item).model_dump_json())
 
                 # Between turns (reply already shipped): in lesson mode, let the
-                # stronger planner brain re-read the session and update the learner
-                # model live. Best-effort — the coach never breaks a lesson.
+                # planner re-read the session and update the learner model live.
+                # Fired in the background so the next turn isn't blocked by it.
                 if db_session is not None:
-                    try:
-                        update = await session.run_between_turns()
-                        if update is not None:
-                            touched = await courses.record_live_update(
-                                runtime.course_id, update
-                            )
-                            if touched or update.focus or update.ready_to_check:
-                                await ws.send_text(
-                                    LearnerUpdate(
-                                        turn_id=turn_id,
-                                        skills=[LearnerSkill(**t) for t in touched],
-                                        focus=update.focus,
-                                        ready_to_check=update.ready_to_check,
-                                    ).model_dump_json()
-                                )
-                    except Exception:
-                        logger.warning("between-turns update failed", exc_info=True)
+                    spawn_coach(turn_id)
             except Exception:
                 logger.exception("fast turn failed")
-                await ws.send_text(
+                await send(
                     ServerError(message="The teacher hit an error on that turn.").model_dump_json()
                 )
     except WebSocketDisconnect:
         logger.info("session disconnected")
     finally:
+        for task in coach_tasks:
+            task.cancel()
         if db_session is not None and courses is not None:
             from datetime import datetime, timezone
 

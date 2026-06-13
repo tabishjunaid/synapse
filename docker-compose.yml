@@ -11,6 +11,10 @@ services:
     image: ollama/ollama:latest
     volumes:
       - ollama-models:/root/.ollama
+    environment:
+      # Keep the model resident so turns don't pay a cold reload (the "long pause
+      # before the teacher speaks"). -1 = never unload.
+      OLLAMA_KEEP_ALIVE: "-1"
     healthcheck:
       test: ["CMD", "ollama", "list"]
       interval: 5s
@@ -26,7 +30,7 @@ services:
         condition: service_healthy
     environment:
       OLLAMA_HOST: http://ollama:11434
-    entrypoint: ["sh", "-c", "ollama pull llama3.2:3b && ollama pull nomic-embed-text"]
+    entrypoint: ["sh", "-c", "ollama pull llama3.2:1b && ollama pull llama3.2:3b && ollama pull nomic-embed-text"]
     restart: "no"
 
   # Document store: course tree, learner model, sessions, RAG chunks.
@@ -50,7 +54,9 @@ services:
     environment:
       SYNAPSE_BRAIN: local
       SYNAPSE_LOCAL_BASE_URL: http://ollama:11434/v1
-      SYNAPSE_LOCAL_MODEL: llama3.2:3b
+      # 1b is ~2-3x faster than 3b on CPU — lower tutoring quality, but responsive
+      # enough to actually test the UI. Bump back to 3b for quality.
+      SYNAPSE_LOCAL_MODEL: llama3.2:1b
       SYNAPSE_EMBED_BASE_URL: http://ollama:11434/v1
       SYNAPSE_MONGO_URL: mongodb://mongo:27017
       SYNAPSE_QUESTDB_HOST: questdb

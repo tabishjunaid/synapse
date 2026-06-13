@@ -137,7 +137,9 @@ class TeacherSession:
             return None
         from .between_turns import plan_between_turns
 
-        update = await plan_between_turns(self.lesson, self.history)
+        # Snapshot history: the coach runs in the background while the next turn
+        # may be appending to it.
+        update = await plan_between_turns(self.lesson, list(self.history))
         if update.focus:
             self.focus = update.focus
         return update

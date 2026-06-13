@@ -1,20 +1,23 @@
 "use client";
 
 // The writing surface. The learner works by hand; the professor reads the
-// strokes (later: rendered to an image → Claude vision) and its feedback lands
-// *on your work*, not in a separate chat. Here the check is mocked — submitting
-// draws an approving annotation over your strokes after a beat.
+// strokes (the canvas is rendered to an image → backend vision model) and the
+// feedback lands here. Live: submitting POSTs the image to /api/writing-check.
 
 import { useEffect, useRef, useState } from "react";
 
+import { checkWriting } from "@/lib/classroomSource";
+import type { WritingCheckResult } from "@/lib/types";
+
 type Phase = "drawing" | "checking" | "checked";
 
-export function WritingCanvas({ onClose }: { onClose: () => void }) {
+export function WritingCanvas({ onClose, lessonId }: { onClose: () => void; lessonId?: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawing = useRef(false);
   const hasInk = useRef(false);
   const [phase, setPhase] = useState<Phase>("drawing");
   const [empty, setEmpty] = useState(true);
+  const [result, setResult] = useState<WritingCheckResult | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -69,13 +72,25 @@ export function WritingCanvas({ onClose }: { onClose: () => void }) {
     if (canvas && ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
     hasInk.current = false;
     setEmpty(true);
+    setResult(null);
     setPhase("drawing");
   };
 
-  const check = () => {
-    if (empty) return;
+  const check = async () => {
+    const canvas = canvasRef.current;
+    if (empty || !canvas) return;
     setPhase("checking");
-    window.setTimeout(() => setPhase("checked"), 1400);
+    try {
+      const image = canvas.toDataURL("image/png");
+      setResult(await checkWriting(image, lessonId));
+    } catch (e) {
+      setResult({
+        feedback: e instanceof Error ? e.message : String(e),
+        annotation: null,
+        score: null,
+      });
+    }
+    setPhase("checked");
   };
 
   return (
@@ -104,25 +119,19 @@ export function WritingCanvas({ onClose }: { onClose: () => void }) {
           </span>
         )}
 
-        {/* Mock annotation — the professor's mark lands on your work. */}
-        {phase === "checked" && (
-          <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
-            <path
-              d="M58 30 q22 8 14 30 q-10 22 -34 16"
-              fill="none"
-              stroke="#34d2a6"
-              strokeWidth="1"
-              pathLength={1}
-              style={{ strokeDasharray: 1, strokeDashoffset: 1, animation: "draw-stroke 0.7s ease forwards" }}
-            />
-          </svg>
-        )}
-        {phase === "checked" && (
+        {phase === "checked" && result?.score != null && (
           <div className="animate-rise-in absolute right-3 top-3 rounded-full bg-[rgba(52,210,166,0.15)] px-2.5 py-1 text-xs font-medium text-[#34d2a6]">
-            ✓ Nicely formed — that&apos;s the idea
+            {Math.round(result.score * 100)}%
           </div>
         )}
       </div>
+
+      {/* The professor's real feedback on your writing. */}
+      {phase === "checked" && result && (
+        <div className="animate-rise-in border-t border-[rgba(255,255,255,0.08)] px-4 py-3 text-sm text-[var(--ink-soft)]">
+          {result.feedback}
+        </div>
+      )}
 
       <div className="flex items-center justify-between gap-2 px-4 py-2.5">
         <button onClick={clear} className="rounded-full px-2 py-1 text-sm text-[var(--ink-soft)] transition hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ink)]">

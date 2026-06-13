@@ -7,12 +7,11 @@
 
 import { useCallback, useMemo, useState } from "react";
 
-import { GLOSSARY } from "@/lib/classroomMock";
 import { useDismissable } from "@/lib/useDismissable";
 
 export function DeepenText({
   text,
-  glossary = GLOSSARY,
+  glossary = {},
 }: {
   text: string;
   glossary?: Record<string, string>;

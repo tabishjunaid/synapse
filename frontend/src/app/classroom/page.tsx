@@ -1,12 +1,15 @@
 "use client";
 
 // The classroom — a lecture-hall "stage" with the professor as a living presence.
-// Composes all seven UI directions over the real Phase 0 voice loop
-// (useSpikeSession); backend-dependent signals (engagement, board, mastery,
-// packs) are realistic mocks, swappable for real data later.
+// Bound to the learner's current lesson: the voice loop, whiteboard, glossary,
+// skill constellation and packs all come from the backend (no mocks). Engagement
+// is still an on-device signal (camera), simulated until MediaPipe lands.
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { Button } from "@/components/ui/Button";
+import { Spinner } from "@/components/ui/Spinner";
 import { CaptionStrip } from "@/components/classroom/CaptionStrip";
 import { DebugHUD } from "@/components/classroom/DebugHUD";
 import { DeepenText } from "@/components/classroom/DeepenText";
@@ -21,51 +24,48 @@ import { Whiteboard } from "@/components/classroom/Whiteboard";
 import { WritingCanvas } from "@/components/classroom/WritingCanvas";
 import { THINKING_PHRASES } from "@/lib/classroomMock";
 import { useClassroomData } from "@/lib/classroomSource";
-import { PERSONAS, personaVars } from "@/lib/personas";
+import { personaVars, type Persona } from "@/lib/personas";
+import { useCourse } from "@/lib/useCourse";
 import { useDismissable } from "@/lib/useDismissable";
 import { useSpikeSession } from "@/lib/useSpikeSession";
 
 export default function ClassroomPage() {
-  const { state, levelRef, start, startMic, stopMic, sendTyped } = useSpikeSession();
+  // Bind the classroom to the learner's current/next open lesson.
+  const { course, loading: courseLoading } = useCourse();
+  const lessonId = course?.next_lesson_id ?? undefined;
 
-  const [persona, setPersona] = useState(PERSONAS[0]);
+  const { state, levelRef, start, startMic, stopMic, sendTyped } = useSpikeSession({ lessonId });
+  const data = useClassroomData(lessonId);
+
+  const [selectedPackId, setSelectedPackId] = useState<string | null>(null);
   const [revealKey, setRevealKey] = useState(0);
   const [typed, setTyped] = useState("");
   const [writing, setWriting] = useState(false);
   const [debug, setDebug] = useState(false);
   const [cameraOn, setCameraOn] = useState(false);
   const [engagement, setEngagement] = useState(0.82);
-  // Marks a send awaiting its server turn. Derived (not effect-cleared): once a
-  // new turn appears, turn count moves past the snapshot and "awaiting" goes false.
   const [sentAtTurns, setSentAtTurns] = useState<number | null>(null);
   const [checkInSnoozed, setCheckInSnoozed] = useState(false);
-  // On phones the right rail (whiteboard + mastery map) is hidden; this surfaces it in a sheet.
   const [boardOpen, setBoardOpen] = useState(false);
   const closeBoard = useCallback(() => setBoardOpen(false), []);
   const boardSheetRef = useDismissable<HTMLDivElement>(boardOpen, closeBoard);
   const wantMic = useRef(false);
 
-  // ---- derive the professor's presence from the live session ----
-  const last = state.turns[state.turns.length - 1];
-  const streaming = !!last && !last.done && !!last.teacherText;
-  const awaiting = sentAtTurns !== null && state.turns.length === sentAtTurns;
-  const thinking = awaiting || (!!last && !last.done && !last.teacherText);
-  const mode: OrbMode = streaming
-    ? "speaking"
-    : thinking
-      ? "thinking"
-      : state.micStatus === "on"
-        ? "listening"
-        : "idle";
+  // Active persona = the selected pack, else the first live one (derived, not
+  // stored, so it tracks the live packs without an effect).
+  const persona = data.packs.find((p) => p.id === selectedPackId) ?? data.packs[0] ?? null;
 
-  const teacherText = last ? last.teacherText : persona.openingLine;
-  const learnerText = last?.learnerText ?? "";
-  const thinkingPhrase = THINKING_PHRASES[state.turns.length % THINKING_PHRASES.length];
-  // Classroom data (board, constellation, glossary, packs) — mocks by default,
-  // live behind NEXT_PUBLIC_SYNAPSE_CLASSROOM_LIVE. A lesson-bound classroom route
-  // would pass its lessonId here to source per-lesson artifacts live.
-  const data = useClassroomData(persona.id);
-  const board = data.board;
+  // Fold the live learner model into the constellation so stars brighten mid-lesson.
+  const constellation = useMemo(
+    () => ({
+      edges: data.constellation.edges,
+      skills: data.constellation.skills.map((n) => {
+        const m = state.live.mastery[n.id];
+        return m != null ? { ...n, mastery: m, status: m >= 0.8 ? "mastered" : n.status } : n;
+      }),
+    }),
+    [data.constellation, state.live.mastery],
+  );
 
   // One-click mic: warm the STT model, then open the mic when it's ready.
   useEffect(() => {
@@ -88,15 +88,6 @@ export default function ClassroomPage() {
     return () => window.clearInterval(id);
   }, [cameraOn]);
 
-  const beginVoice = () => {
-    if (state.micStatus === "on") {
-      stopMic();
-      return;
-    }
-    wantMic.current = true;
-    start();
-  };
-
   const send = useCallback(
     (text: string) => {
       setSentAtTurns(state.turns.length);
@@ -104,11 +95,6 @@ export default function ClassroomPage() {
     },
     [sendTyped, state.turns.length],
   );
-
-  const switchPersona = (p: typeof persona) => {
-    setPersona(p);
-    setRevealKey((k) => k + 1);
-  };
 
   // ⌘. toggles the debug HUD.
   useEffect(() => {
@@ -122,11 +108,80 @@ export default function ClassroomPage() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // ---- guards (after all hooks) ----
+  if (courseLoading) {
+    return (
+      <main className="flex min-h-screen items-center justify-center">
+        <Spinner className="size-6 text-accent" />
+      </main>
+    );
+  }
+  if (!course) {
+    return (
+      <main className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center gap-4 p-6 text-center">
+        <h1 className="text-xl font-semibold">No course yet</h1>
+        <p className="text-sm text-muted-foreground">
+          The classroom teaches your current lesson — start a course first.
+        </p>
+        <Link href="/onboarding">
+          <Button>Start a course</Button>
+        </Link>
+      </main>
+    );
+  }
+  if (!persona) {
+    return (
+      <main className="flex min-h-screen items-center justify-center">
+        <Spinner className="size-6 text-accent" />
+      </main>
+    );
+  }
+
+  // ---- derive the professor's presence from the live session ----
+  const last = state.turns[state.turns.length - 1];
+  const streaming = !!last && !last.done && !!last.teacherText;
+  const awaiting = sentAtTurns !== null && state.turns.length === sentAtTurns;
+  const thinking = awaiting || (!!last && !last.done && !last.teacherText);
+  const mode: OrbMode = streaming
+    ? "speaking"
+    : thinking
+      ? "thinking"
+      : state.micStatus === "on"
+        ? "listening"
+        : "idle";
+
+  const teacherText = last ? last.teacherText : persona.openingLine;
+  const learnerText = last?.learnerText ?? "";
+  const thinkingPhrase = THINKING_PHRASES[state.turns.length % THINKING_PHRASES.length];
+  const board = data.board;
+
+  const beginVoice = () => {
+    if (state.micStatus === "on") {
+      stopMic();
+      return;
+    }
+    wantMic.current = true;
+    start();
+  };
+
+  const switchPersona = (p: Persona) => {
+    setSelectedPackId(p.id);
+    setRevealKey((k) => k + 1);
+  };
+
   const showCheckIn = cameraOn && engagement < 0.46 && !thinking && !checkInSnoozed;
   const dismissCheckIn = () => {
     setCheckInSnoozed(true);
     window.setTimeout(() => setCheckInSnoozed(false), 14000);
   };
+
+  const boardNode = board ? (
+    <Whiteboard board={board} revealKey={revealKey} />
+  ) : (
+    <div className="glass rounded-2xl px-4 py-6 text-center text-xs text-[var(--ink-faint)]">
+      The board appears as the lesson loads.
+    </div>
+  );
 
   return (
     <main
@@ -196,17 +251,13 @@ export default function ClassroomPage() {
 
           {/* check-in floats above the dock */}
           <div className="pointer-events-none absolute bottom-28 flex w-full justify-center">
-            <EngagementCheckIn
-              visible={showCheckIn}
-              onYes={dismissCheckIn}
-              onNo={dismissCheckIn}
-            />
+            <EngagementCheckIn visible={showCheckIn} onYes={dismissCheckIn} onNo={dismissCheckIn} />
           </div>
 
           {/* writing canvas slides in above the dock */}
           {writing && (
             <div className="absolute bottom-24 w-full max-w-xl px-2">
-              <WritingCanvas onClose={() => setWriting(false)} />
+              <WritingCanvas onClose={() => setWriting(false)} lessonId={lessonId} />
             </div>
           )}
 
@@ -264,10 +315,8 @@ export default function ClassroomPage() {
 
         {/* ---- right rail ---- */}
         <aside className="hidden w-[360px] shrink-0 flex-col gap-4 lg:flex">
-          <div className="min-h-0 flex-1">
-            <Whiteboard board={board} revealKey={revealKey} />
-          </div>
-          <SkillConstellation nodes={data.constellation.skills} edges={data.constellation.edges} />
+          <div className="min-h-0 flex-1">{boardNode}</div>
+          <SkillConstellation nodes={constellation.skills} edges={constellation.edges} />
         </aside>
       </div>
 
@@ -292,8 +341,8 @@ export default function ClassroomPage() {
                 <span aria-hidden="true">✕</span>
               </button>
             </div>
-            <Whiteboard board={board} revealKey={revealKey} />
-            <SkillConstellation nodes={data.constellation.skills} edges={data.constellation.edges} />
+            {boardNode}
+            <SkillConstellation nodes={constellation.skills} edges={constellation.edges} />
           </div>
         </div>
       )}

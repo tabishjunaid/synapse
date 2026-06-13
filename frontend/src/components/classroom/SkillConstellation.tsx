@@ -7,7 +7,7 @@
 
 import { useState } from "react";
 
-import { SKILL_EDGES, SKILL_NODES, type SkillEdge, type SkillNode } from "@/lib/classroomMock";
+import type { SkillEdge, SkillNode } from "@/lib/classroomMock";
 
 const W = 360;
 const H = 196;
@@ -15,13 +15,28 @@ const px = (x: number) => 16 + x * (W - 32);
 const py = (y: number) => 14 + y * (H - 28);
 
 export function SkillConstellation({
-  nodes = SKILL_NODES,
-  edges = SKILL_EDGES,
+  nodes,
+  edges,
 }: {
-  nodes?: SkillNode[];
-  edges?: SkillEdge[];
-} = {}) {
+  nodes: SkillNode[];
+  edges: SkillEdge[];
+}) {
   const [hover, setHover] = useState<string | null>(null);
+
+  if (nodes.length === 0) {
+    return (
+      <div className="glass flex flex-col overflow-hidden rounded-2xl">
+        <div className="flex items-center justify-between border-b border-[rgba(255,255,255,0.08)] px-4 py-2.5">
+          <span className="text-sm font-medium text-[var(--ink)]">Your path</span>
+          <span className="text-[10px] uppercase tracking-wider text-[var(--ink-faint)]">mastery map</span>
+        </div>
+        <p className="px-4 py-6 text-center text-xs text-[var(--ink-faint)]">
+          No skills yet — start a lesson to light up your constellation.
+        </p>
+      </div>
+    );
+  }
+
   const byId = (id: string) => nodes.find((n) => n.id === id)!;
   const active =
     (hover ? byId(hover) : nodes.find((n) => n.status === "current")) ?? nodes[0];

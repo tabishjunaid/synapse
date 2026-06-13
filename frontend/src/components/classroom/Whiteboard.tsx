@@ -63,8 +63,9 @@ function drawn(delay: number, duration = 0.9): React.CSSProperties {
   };
 }
 
-function Diagram({ which }: { which: DiagramKey }) {
+function Diagram({ which }: { which: DiagramKey | "" }) {
   const stroke = "var(--accent)";
+  if (!which) return null; // non-diagrammatic lesson — board shows title/note only
   switch (which) {
     case "derivative":
       return (
