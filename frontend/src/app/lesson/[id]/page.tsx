@@ -184,6 +184,9 @@ export default function LessonPage() {
             ))}
           </ul>
         )}
+        {lesson.skills.length > 0 && (
+          <LiveMastery skills={lesson.skills} mastery={state.live.mastery} />
+        )}
       </header>
 
       <div
@@ -251,14 +254,56 @@ export default function LessonPage() {
               )}
               {state.micStatus === "on" && <LevelMeter levelRef={levelRef} />}
             </div>
-            <Button onClick={checkUnderstanding} disabled={grading || exchanges < 2}>
-              {grading ? <><Spinner className="size-4" /> Assessing…</> : "Check my understanding"}
-            </Button>
+            <div className="flex items-center gap-2">
+              {state.live.readyToCheck && !grading && (
+                <Badge tone="success">Ready to check ✓</Badge>
+              )}
+              <Button
+                onClick={checkUnderstanding}
+                disabled={grading || exchanges < 2}
+                className={state.live.readyToCheck && !grading ? "ring-2 ring-success/50" : undefined}
+              >
+                {grading ? <><Spinner className="size-4" /> Assessing…</> : "Check my understanding"}
+              </Button>
+            </div>
           </div>
           {state.error && <p className="text-xs text-warning">{state.error}</p>}
         </div>
       )}
     </main>
+  );
+}
+
+// Live learner model — fills in as the between-turns planner re-estimates mastery
+// mid-lesson (every few turns), so progress is visible before the final check.
+function LiveMastery({
+  skills,
+  mastery,
+}: {
+  skills: { id: string; name: string }[];
+  mastery: Record<string, number>;
+}) {
+  const seen = skills.some((s) => mastery[s.id] != null);
+  return (
+    <div className="mt-1 space-y-1">
+      <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+        Live mastery {seen ? "" : "· updates as you go"}
+      </p>
+      <div className="grid gap-1.5 sm:grid-cols-2">
+        {skills.map((s) => {
+          const m = mastery[s.id] ?? 0;
+          return (
+            <div key={s.id} className="flex items-center gap-2">
+              <span className="w-28 shrink-0 truncate text-xs text-muted-foreground">{s.name}</span>
+              <Progress value={m} />
+              <span className="w-8 shrink-0 text-end text-[10px] text-muted-foreground">
+                {Math.round(m * 100)}%
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 

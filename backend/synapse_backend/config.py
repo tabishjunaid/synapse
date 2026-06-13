@@ -31,6 +31,13 @@ class Settings(BaseSettings):
     # Shared: cap on the fast-path reply so latency stays bounded.
     fast_max_tokens: int = 300
 
+    # Read timeout (seconds) for OpenAI-compatible model calls. The default is
+    # generous because structured generations (course planning, the between-turns
+    # planner) can be long, and slow local CPU models emit only a few tokens/sec —
+    # a tight timeout would abort them mid-syllabus. Lower it for hosted brains
+    # where you'd rather fail fast. Connect timeout stays short (5s).
+    http_timeout: float = 600.0
+
     # --- local backend (Ollama / MLX / llama.cpp / vLLM) ---
     local_base_url: str = "http://localhost:11434/v1"
     local_model: str = "llama3.2:3b"

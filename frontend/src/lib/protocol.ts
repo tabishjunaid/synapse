@@ -42,9 +42,30 @@ export interface TurnEnd {
   speech_end_ts?: number | null;
 }
 
+export interface LearnerSkill {
+  skill_id: string;
+  mastery: number;
+}
+
+// A live learner-model update from the between-turns planner. Emitted between
+// turns (not every turn), so the UI reflects in-session mastery without waiting
+// for lesson completion.
+export interface LearnerUpdate {
+  type: "learner_update";
+  turn_id: number;
+  skills: LearnerSkill[];
+  focus: string;
+  ready_to_check: boolean;
+}
+
 export interface ServerError {
   type: "error";
   message: string;
 }
 
-export type ServerEvent = TurnStart | SpeakDelta | TurnEnd | ServerError;
+export type ServerEvent =
+  | TurnStart
+  | SpeakDelta
+  | TurnEnd
+  | LearnerUpdate
+  | ServerError;

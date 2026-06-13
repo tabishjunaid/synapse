@@ -51,6 +51,7 @@ def build_backend(brain: Brain) -> LLMBackend:
             # the small fast-path budget goes to the actual answer.
             max_tokens_field="max_completion_tokens",
             extra_body={"reasoning_effort": "minimal"},
+            request_timeout=s.http_timeout,
         )
 
     if brain == "deepseek":
@@ -59,12 +60,14 @@ def build_backend(brain: Brain) -> LLMBackend:
             base_url=s.deepseek_base_url,
             model=s.deepseek_model,
             api_key=s.deepseek_api_key,
+            request_timeout=s.http_timeout,
         )
 
     return OpenAICompatBackend(
         base_url=s.local_base_url,
         model=s.local_model,
         api_key=s.local_api_key,
+        request_timeout=s.http_timeout,
     )
 
 

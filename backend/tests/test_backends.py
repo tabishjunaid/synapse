@@ -47,6 +47,14 @@ def test_hosted_backend_without_key_fails_fast(monkeypatch):
         teacher.make_backend()
 
 
+def test_http_timeout_flows_into_client(monkeypatch):
+    _patch(monkeypatch, http_timeout=420.0)
+    backend = teacher.make_backend()
+    # httpx stores the read timeout on the client's Timeout config.
+    assert backend._client.timeout.read == 420.0
+    assert backend._client.timeout.connect == 5.0
+
+
 def test_active_model_tracks_brain():
     assert Settings(brain="local").active_model == "llama3.2:3b"
     assert Settings(brain="deepseek").active_model == "deepseek-chat"

@@ -81,6 +81,7 @@ class OpenAICompatBackend:
         api_key: str = "local",
         max_tokens_field: str = "max_tokens",
         extra_body: dict | None = None,
+        request_timeout: float = 600.0,
     ) -> None:
         self.name = f"openai-compat:{model}"
         self._url = base_url.rstrip("/") + "/chat/completions"
@@ -93,9 +94,10 @@ class OpenAICompatBackend:
         # OpenAI's `reasoning_effort: "minimal"` so a fast chat turn doesn't burn
         # its small token budget on hidden reasoning.
         self._extra_body = extra_body or {}
-        # No request timeout cap on first byte beyond a generous read; a cold
-        # local model can take a few seconds to load weights on the first call.
-        self._client = httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=5.0))
+        # Generous read timeout: structured generations are long and slow local
+        # CPU models emit only a few tokens/sec, so a tight cap would abort them
+        # mid-reply. Connect stays short to fail fast on an unreachable server.
+        self._client = httpx.AsyncClient(timeout=httpx.Timeout(request_timeout, connect=5.0))
 
     async def stream(
         self, *, system: str, messages: list[dict], max_tokens: int

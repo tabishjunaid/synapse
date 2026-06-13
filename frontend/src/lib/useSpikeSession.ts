@@ -32,6 +32,20 @@ export interface Turn {
   timings: TurnTimings;
 }
 
+/**
+ * The live learner model, driven by the between-turns planner's `learner_update`
+ * events. In lesson mode the backend re-reads the session on a stronger model
+ * every few turns; this reflects that mid-lesson, before completion.
+ */
+export interface LiveModel {
+  /** skill_id -> mastery (0..1), updated live as the planner re-estimates. */
+  mastery: Record<string, number>;
+  /** The planner's latest one-line steer (guidance; not shown verbatim). */
+  focus: string;
+  /** The planner judges the learner has shown the objectives. */
+  readyToCheck: boolean;
+}
+
 export interface SpikeState {
   sttStatus: "idle" | "loading" | "ready" | "error";
   sttDevice: "webgpu" | "wasm" | null;
@@ -42,6 +56,7 @@ export interface SpikeState {
   ttsIsLocal: boolean;
   error: string | null;
   turns: Turn[];
+  live: LiveModel;
 }
 
 interface PendingTiming {
@@ -73,6 +88,7 @@ export function useSpikeSession(opts: { lessonId?: string } = {}) {
     ttsIsLocal: false,
     error: null,
     turns: [],
+    live: { mastery: {}, focus: "", readyToCheck: false },
   });
 
   const workerRef = useRef<Worker | null>(null);
@@ -214,6 +230,23 @@ export function useSpikeSession(opts: { lessonId?: string } = {}) {
               outputTokens: event.latency.output_tokens,
             },
           }));
+          break;
+        }
+        case "learner_update": {
+          // Merge the between-turns planner's live estimates into the model so
+          // the UI (mastery bars, ready-to-check) reflects progress mid-lesson.
+          setState((s) => {
+            const mastery = { ...s.live.mastery };
+            for (const sk of event.skills) mastery[sk.skill_id] = sk.mastery;
+            return {
+              ...s,
+              live: {
+                mastery,
+                focus: event.focus || s.live.focus,
+                readyToCheck: event.ready_to_check,
+              },
+            };
+          });
           break;
         }
         case "error":
